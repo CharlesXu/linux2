@@ -1,0 +1,406 @@
+/*
+ * Copyright 2015 Freescale Semiconductor, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
+#include <dt-bindings/clock/s32v234-clock.h>
+#include <dt-bindings/pinctrl/s32v234-pinctrl.h>
+
+/memreserve/ 0xC0000000 0x00010000;
+
+ / {
+	compatible = "fsl,s32v234", "arm,vexpress,v2p-aarch64", "arm,vexpress";
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	aliases {
+		can0 = &can0;
+		can1 = &can1;
+		serial0 = &uart0;
+		serial1 = &uart1;
+	};
+
+	cpus {
+		#address-cells = <2>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,arm-v8";
+			reg = <0x0 0x0>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0xC0000000>;
+		};
+		cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,arm-v8";
+			reg = <0x0 0x1>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0xC0000000>;
+		};
+		cpu@100 {
+			device_type = "cpu";
+			compatible = "arm,arm-v8";
+			reg = <0x0 0x100>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0xC0000000>;
+		};
+		cpu@101 {
+			device_type = "cpu";
+			compatible = "arm,arm-v8";
+			reg = <0x0 0x101>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0xC0000000>;
+		};
+	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		fxosc {
+			compatible = "fixed-clock";
+			clock-frequency = <40000000>;
+		};
+		firc {
+			compatible = "fixed-clock";
+			clock-frequency = <48000000>;
+		};
+	};
+
+	memory_DDR0@80000000 {
+		device_type = "memory";
+		reg = <0 0x80000000 0 0x30000000>;
+	};
+
+	memory_DDR1@c0000000 {
+		device_type = "memory";
+		reg = <0 0xc0000000 0 0x10000000>;
+	};
+
+	gic: interrupt-controller@7d001000 {
+		compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
+		#interrupt-cells = <3>;
+		#address-cells = <0>;
+		interrupt-controller;
+		reg = <0 0x7d001000 0 0x1000>,
+		      <0 0x7d002000 0 0x1000>,
+		      <0 0x7d004000 0 0x2000>,
+		      <0 0x7d006000 0 0x2000>;
+		interrupts = <1 9 0xf04>;
+	};
+
+	cci@7d090000 {
+		compatible = "arm,cci";
+		reg = <0 0x7d090000 0 0x10000>;
+		interrupts = <0 101 4>,
+			     <0 102 4>,
+			     <0 103 4>,
+			     <0 104 4>,
+			     <0 105 4>;
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <1 13 0xf08>,
+			     <1 14 0xf08>,
+			     <1 11 0xf08>,
+			     <1 10 0xf08>;
+		clock-frequency = <12000000>;
+	};
+	pmu {
+		compatible = "arm,armv8-pmuv3";
+		interrupts = <0 163 0x4>,
+			     <0 164 0x4>,
+			     <0 165 0x4>,
+			     <0 166 0x4>;
+	};
+
+	pu_dummy: pudummy_reg {
+		/* only used in ldo-bypass */
+		/* used by the gpu driver */
+		compatible = "fsl,s32v234-dummy-pureg";
+	};
+
+	soc {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "simple-bus";
+		interrupt-parent = <&gic>;
+		ranges;
+
+		aips0: aips-bus@40000000 {
+			compatible = "fsl,aips-bus", "simple-bus";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			interrupt-parent = <&gic>;
+			reg = <0x0 0x40000000 0x0 0x7D000>;
+			ranges;
+
+			/*
+			 * TODO: Update the clocks when the clock framework is
+			 * defined.
+			 */
+
+			cse3: crypto@40001000 {
+				compatible = "fsl,s32v234-cse3";
+				reg = <0x0 0x40001000 0x0 0x1000>;
+				interrupts = <0 18 4>;
+				status = "disabled";
+			};
+
+			swt0:swt@4000A000 {
+				compatible = "fsl,s32v234-wdt", "fsl,sac58r-wdt";
+				reg = <0x0 0x4000A000 0x0 0x1000>;
+				clocks = <&clks S32V234_CLK_SYS6>;
+				clock-names = "swt";
+				status = "disabled";
+			};
+
+			gpu: gpu@40020000 {
+				compatible = "fsl,s32v234-gpu";
+				reg = <0x0 0x40020000 0x0 0x1000>,
+				      <0x0 0xC0000000 0x0 0x0>;
+				reg-names = "iobase_3d", "phys_baseaddr";
+				interrupts = <0 101 0x04>;
+				interrupt-names = "irq_3d";
+				clocks = <&clks S32V234_CLK_GPU>,
+						<&clks S32V234_CLK_GPU_SHD>;
+				clock-names = "gpu3d_clk", "gpu3d_shader_clk";
+				resets = <&src 0>;
+				reset-names = "gpu3d";
+
+				/* ldo-bypass: use pu_dummy
+				if VDDSOC share with VDDPU */
+				pu-supply = <&pu_dummy>;
+			};
+
+			mipicsi0: mipicsi2@40030000{
+				compatible = "fsl,s32v234-mipicsi2";
+				reg = <0x0 0x40030000 0x0 0x1000>;
+				sensor = <0x0>; // nothing connected
+				clocks = <&clks S32V234_CLK_SYS6>;
+				clock-names = "mipicsi2";
+
+				status = "disabled";
+			};
+
+			fec: ethernet@40032000 {
+				compatible = "fsl,s32v234-fec";
+				reg = <0x0 0x40032000 0x0 0x1000>;
+				interrupts = <0 35 4>,
+							 <0 36 4>,
+							 <0 37 4>,
+							 <0 38 4>;
+				clocks = <&clks S32V234_CLK_SYS6>,
+						 <&clks S32V234_CLK_SYS3>,
+						 <&clks S32V234_CLK_ENET_TIME>,
+						 <&clks S32V234_CLK_ENET>,
+						 <&clks S32V234_CLK_ENET_TIME>;
+				clock-names = "ipg", "ahb", "ptp",
+							  "enet_clk_ref",
+							  "enet_out";
+				fsl,num-tx-queues=<3>;
+				fsl,num-rx-queues=<3>;
+				status = "disabled";
+			};
+
+			clks: mc_cgm0@4003C000 {
+				compatible = "fsl,s32v234-mc_cgm0";
+				reg = <0x0 0x4003C000 0x0 0x1000>;
+				#clock-cells = <1>;
+			};
+
+			mc_cgm1: mc_cgm1@4003F000 {
+				compatible = "fsl,s32v234-mc_cgm1";
+				reg = <0x0 0x4003F000 0x0 0x1000>;
+			};
+
+			mc_cgm2: mc_cgm2@40042000 {
+				compatible = "fsl,s32v234-mc_cgm2";
+				reg = <0x0 0x40042000 0x0 0x1000>;
+			};
+
+			mc_cgm3: mc_cgm3@40045000 {
+				compatible = "fsl,s32v234-mc_cgm3";
+				reg = <0x0 0x40045000 0x0 0x1000>;
+			};
+
+			mc_me: mc_me@4004A000 {
+				compatible = "fsl,s32v234-mc_me",
+					     "fsl,s32v-reset";
+				reg = <0x0 0x4004A000 0x0 0x1000>;
+			};
+
+			i2c0: i2c@40051000 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				compatible = "fsl,s32v234-i2c";
+				reg = <0x0 0x40051000 0x0 0x1000>;
+				interrupts =<0 67 4>;
+				clocks = <&clks S32V234_CLK_SYS6>;
+				clock-names = "ipg";
+				/* TODO: Update the dma when edma ip is activated
+				dmas = <&edma0 0 50>,
+				<&edma0 0 51>;
+				dma-names = "rx","tx";
+				*/
+				status = "disabled";
+			};
+
+			uart0:serial@40053000 {
+				compatible = "fsl,s32v234-linflexuart";
+				reg = <0x0 0x40053000 0x0 0x1000>;
+				interrupts = <0 59 4>;
+				clocks = <&clks S32V234_CLK_LIN>;
+				clock-names = "lin";
+				status = "disabled";
+			};
+
+			can0: flexcan@40055000 {
+				compatible = "fsl,s32v234-flexcan";
+				reg = <0x0 0x40055000 0x0 0x4000>;
+				interrupts = <0 42 4>;
+				clocks = <&clks S32V234_CLK_CAN>,
+						<&clks S32V234_CLK_CAN>;
+						clock-names = "ipg", "per";
+			};
+
+			usdhc0: usdhc@4005D000 {
+				compatible = "fsl,s32v234-usdhc", "fsl,sac85r-usdhc";
+				reg = <0x0 0x4005D000 0x0 0x1000>;
+				interrupts = <0 28 4>;
+				clocks = <&clks S32V234_CLK_SDHC>,
+					 <&clks S32V234_CLK_SDHC>,
+					 <&clks S32V234_CLK_SDHC>;
+				clock-names = "ipg", "ahb", "per";
+				status = "disabled";
+			};
+
+			viulite0: viulite0@40064000 {
+				compatible = "fsl,s32v234-viulite0";
+				reg = <0x0 0x40064000 0x0 0x1000>;
+				interrupts = <0 96 4>;
+				status = "disabled";
+			};
+
+			siul2: siul@4006C000 {
+				compatible = "fsl,s32v234-siul2";
+				reg = <0x0 0x4006C000 0x0 0x1794>;
+				status = "disabled";
+			};
+
+			src: src@4007C000 {
+				compatible = "fsl,s32v234-src", "syscon";
+				reg = <0x0 0x4007C000 0x0 0x1000>;
+				#reset-cells = <1>;
+			};
+
+			dcu0: dcu@40028000 {
+				compatible = "fsl,s32v234-dcu";
+				reg = <0x0 0x40028000 0x0 0x0200>;
+				clocks = <&clks S32V234_CLK_SYS6>;
+				clock-names = "dcu";
+				status = "disabled";
+			};
+		};
+
+	};
+	aips1: aips-bus@40080000 {
+		compatible = "fsl,aips-bus", "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		interrupt-parent = <&gic>;
+		reg = <0x0 0x40080000 0x0 0x70000>;
+		ranges;
+
+		mipicsi1: csi@400A0000{
+			compatible = "fsl,s32v234-mipicsi2";
+			reg = <0x0 0x400A0000 0x0 0x1000>;
+			sensor = <0x0>;   // nothing connected
+			clocks = <&clks S32V234_CLK_SYS6>;
+			clock-names = "mipicsi2";
+
+			status = "disabled";
+		};
+
+		i2c1: i2c@400b8000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "fsl,s32v234-i2c";
+			reg = <0x0 0x400b8000 0x0 0x1000>;
+			interrupts =<0 68 4>;
+			clocks = <&clks S32V234_CLK_SYS6>;
+			clock-names = "ipg";
+			/* TODO: Update the dma when edma ip is activated
+			dmas = <&edma0 0 50>,
+			<&edma0 0 51>;
+			dma-names = "rx","tx";
+			*/
+			status = "disabled";
+		};
+		i2c2: i2c@400ba000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "fsl,s32v234-i2c";
+			reg = <0x0 0x400ba000 0x0 0x1000>;
+			interrupts =<0 69 4>;
+			clocks = <&clks S32V234_CLK_SYS6>;
+			clock-names = "ipg";
+			/* TODO: Update the dma when edma ip is activated
+			dmas = <&edma0 0 50>,
+			<&edma0 0 51>;
+			dma-names = "rx","tx";
+			*/
+			status = "disabled";
+		};
+		uart1:serial@400bc000 {
+				compatible = "fsl,s32v234-linflexuart";
+				reg = <0x0 0x400bc000 0x0 0x1000>;
+				interrupts = <0 60 4>;
+				clocks = <&clks S32V234_CLK_LIN>;
+				clock-names = "lin";
+				status = "disabled";
+		};
+		can1: flexcan@400be000 {
+				compatible = "fsl,s32v234-flexcan";
+				reg = <0x0 0x400be000 0x0 0x4000>;
+				interrupts = <0 44 4>;
+				clocks = <&clks S32V234_CLK_CAN>,
+						<&clks S32V234_CLK_CAN>;
+						clock-names = "ipg", "per";
+		};
+		viulite1: viulite1@400D0000 {
+				compatible = "fsl,s32v234-viulite1";
+				reg = <0x0 0x400D0000 0x0 0x1000>;
+				interrupts = <0 100 4>;
+				status = "disabled";
+		};
+	};
+	pcie: pcie@0x72000000 {
+		compatible = "fsl,s32v234-pcie";
+		reg = <0 0x72ffc000 0 0x4000>, <0 0x72f00000 0 0x80000>;
+		reg-names = "dbi", "config";
+		#address-cells = <3>;
+		#size-cells = <2>;
+		device_type = "pci";
+		ranges = <0x81000000 0 0          0 0x72f80000 0 0x00010000 /* downstream I/O */
+			  0x82000000 0 0x72000000 0 0x72000000 0 0x00f00000>; /* non-prefetchable memory */
+		num-lanes = <1>;
+		bus-range = <0x0 0xff>;
+		interrupts = <0 105 4>;
+		interrupt-names = "msi";
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 0x7>;
+		interrupt-map = <0 0 0 1 &gic 0 105 4>,
+						<0 0 0 2 &gic 0 106 4>,
+						<0 0 0 3 &gic 0 107 4>,
+						<0 0 0 4 &gic 0 108 4>;
+		status = "disabled";
+	};
+};
+
